@@ -1,4 +1,4 @@
-import { HttpClient, provideHttpClient, withInterceptorsFromDi } from '@angular/common/http'
+import { HttpClient, provideHttpClient, withInterceptors, withInterceptorsFromDi } from '@angular/common/http'
 import { inject, NgModule, provideAppInitializer } from '@angular/core'
 import { BrowserModule } from '@angular/platform-browser'
 import { BrowserAnimationsModule } from '@angular/platform-browser/animations'
@@ -51,6 +51,8 @@ import { PortalViewportComponent } from './shell/components/portal-viewport/port
 import { ParametersService } from './shell/services/parameters.service'
 import { mapSlots } from './shell/utils/slot-names-mapper'
 import { ImageRepositoryService } from './shell/services/image-repository.service'
+import { httpDebugInterceptor } from './debug/htt.adv.debug.interceptor'
+import { MyFeatureComponent } from './debug/feature-component'
 
 async function styleInitializer(
   configService: ConfigurationService,
@@ -322,6 +324,39 @@ export async function shareMfContainer() {
   window.onecxWebpackContainer = __webpack_share_scopes__ // NOSONAR
 }
 
+// *******************************************************************************************************************************************
+// *******************************************************************************************************************************************
+// *******************************************************************************************************************************************
+
+// export const httpDebugInterceptor: HttpInterceptorFn = (req, next) => {
+//   const appState = inject(AppStateService)
+//   const initReady = !!(appState as any)?.isAuthenticated$?.isInitialized
+//   // Minimal debug log to trace request timing vs auth init
+//   console.log('[http-debug] req', req.url, { initReady })
+//   return next(req)
+// }
+
+export function reproEarlyHttpInitializer(
+  userProfileBffService: UserProfileBffService,
+  appStateService: AppStateService
+) {
+  return async () => {
+    try {
+      // // if (!(environment as any).REPRO_EARLY_HTTP) return
+      // console.log('[repro] firing early getUserProfile() before auth init')
+      // console.log('[repro] isInitialized?', (appStateService as any).isAuthenticated$?.isInitialized)
+      // await firstValueFrom(userProfileBffService.getUserProfile())
+      // console.log('[repro] early call completed')
+    } catch (e) {
+      console.warn('[repro] early call error', e)
+    }
+  }
+}
+
+// *******************************************************************************************************************************************
+// *******************************************************************************************************************************************
+// *******************************************************************************************************************************************
+
 @NgModule({
   declarations: [AppComponent],
   imports: [
@@ -331,10 +366,15 @@ export async function shareMfContainer() {
     RouterModule.forRoot(appRoutes),
     PortalViewportComponent,
     GlobalErrorComponent,
-    AppLoadingSpinnerComponent
+    AppLoadingSpinnerComponent,
+    MyFeatureComponent
   ],
   providers: [
-    provideHttpClient(withInterceptorsFromDi()),
+    // provideHttpClient(withInterceptorsFromDi()),
+    // Dev-only initializer to reproduce early HTTP before auth init
+    provideAppInitializer(() => {
+      return reproEarlyHttpInitializer(inject(UserProfileBffService), inject(AppStateService))()
+    }),
     provideAppInitializer(() => {
       return workspaceConfigInitializer(
         inject(WorkspaceConfigBffService),
@@ -353,6 +393,7 @@ export async function shareMfContainer() {
     }),
     provideThemeConfig(),
     provideTokenInterceptor(),
+    provideHttpClient(withInterceptors([httpDebugInterceptor]), withInterceptorsFromDi()),
     provideAuthService(),
     providePrimeNG(),
     {

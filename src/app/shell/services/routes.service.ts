@@ -17,9 +17,10 @@ import { appRoutes } from 'src/app/app.routes'
 import { Route as BffGeneratedRoute, PathMatch, PermissionBffService, Technologies } from 'src/app/shared/generated'
 
 import { WebcomponentLoaderModule } from '../web-component-loader/webcomponent-loader.module'
-import { updateStylesForMfeChange } from '@onecx/angular-utils/style'
 import { HttpClient } from '@angular/common/http'
 import { PermissionsCacheService } from './permissions-cache.service'
+import { logOnce } from 'src/app/debug/log.utility'
+import { updateStylesForMfeChange } from '@onecx/angular-utils/style';
 
 export const DEFAULT_CATCH_ALL_ROUTE: Route = {
   path: '**',
@@ -58,7 +59,10 @@ export class RoutesService {
       generatedRoutes.push(await this.createFallbackRoute())
     }
     this.router.resetConfig([...appRoutes, ...generatedRoutes, DEFAULT_CATCH_ALL_ROUTE])
-    console.log('🧭 Adding Workspace routes:\n' + this.listRoutes(routes))
+    // console.log('🧭 Adding Workspace routes:\n' + this.listRoutes(routes))
+    // console.log('🧭 Registered Shell routes:\n', appRoutes)
+    // console.log('🧭 Adding Workspace routes:\n' , this.printRoutes(this.router.config))
+    this.logger("🛣️", 'init(routes)', { routes },  {shellRoutes: appRoutes , workspaceRoutes: this.printRoutes(routes),  registeredRoutes: this.router.config});
   }
 
   private listRoutes(routes: BffGeneratedRoute[]): string {
@@ -92,7 +96,7 @@ export class RoutesService {
         await this.updateAppEnvironment(r, joinedBaseUrl)
         const m = await loadRemoteModule(this.toLoadRemoteEntryOptions(r))
         const exposedModule = r.exposedModule.startsWith('./') ? r.exposedModule.slice(2) : r.exposedModule
-        console.log(`Load remote module ${exposedModule} finished.`)
+        this.logger("🛣️", 'loadChildren(r: BffGeneratedRoute, joinedBaseUrl: string)', { r, joinedBaseUrl },  {m: m , exposedModule: exposedModule,  returnValue: (r.technology === Technologies.Angular) ? m[exposedModule] : WebcomponentLoaderModule});
         if (r.technology === Technologies.Angular) {
           return m[exposedModule]
         } else {
@@ -118,6 +122,7 @@ export class RoutesService {
       currentMfeInfo = await firstValueFrom(this.appStateService.currentMfe$.asObservable())
     }
 
+    this.logger("🛣️", 'updateAppState(r: BffGeneratedRoute, joinedBaseUrl: string)', { r, joinedBaseUrl }, { currentGlobalLoading, currentMfeInfo, isFirstLoad: (this.isFirstLoad),remoteUrl : currentMfeInfo?.remoteBaseUrl ?? undefined, r_url: (r.url)  ,returnValue: this.isFirstLoad || (currentMfeInfo?.remoteBaseUrl ?? undefined) !== r.url });
     if (this.isFirstLoad || (currentMfeInfo?.remoteBaseUrl ?? undefined) !== r.url) {
       this.isFirstLoad = false
       if (!currentGlobalLoading) {
@@ -135,6 +140,7 @@ export class RoutesService {
   }
 
   private async updateAppStyles(r: BffGeneratedRoute) {
+    this.logger("🛣️", 'updateAppStyles(r: BffGeneratedRoute)', { r },  {});
     await updateStylesForMfeChange(r.productName, r.appId, this.httpClient, r.url)
   }
 
@@ -151,6 +157,7 @@ export class RoutesService {
       remoteName: r.remoteName,
       elementName: r.elementName
     }
+    this.logger("🛣️", 'updateMfeInfo(r: BffGeneratedRoute, joinedBaseUrl: string)', { r, joinedBaseUrl },  {mfeInfo});
     return await this.appStateService.currentMfe$.publish(mfeInfo)
   }
 
@@ -161,6 +168,7 @@ export class RoutesService {
       )
     )
     await this.permissionsTopic$.publish(permissions)
+    this.logger("🛣️", 'updatePermissions(r: BffGeneratedRoute)', { r },  {permissions});
   }
 
   private async onRemoteLoadError(err: unknown) {
@@ -173,12 +181,23 @@ export class RoutesService {
       requestedApplicationPath: getLocation().applicationPath
     }
 
+    this.logger("🛣️", 'onRemoteLoadError(err: unknown)', { err },  {routerParams});
     this.router.navigate(['remote-loading-error-page', routerParams])
     throw err
   }
 
   private toLoadRemoteEntryOptions(r: BffGeneratedRoute): LoadRemoteModuleOptions {
     const exposedModule = r.exposedModule.startsWith('./') ? r.exposedModule.slice(2) : r.exposedModule
+    this.logger("🛣️", 'toLoadRemoteEntryOptions(r: BffGeneratedRoute)', { r },  {exposedModule, returnValue: (r.technology === Technologies.Angular || r.technology === Technologies.WebComponentModule) ? {
+        type: 'module',
+        remoteEntry: r.remoteEntryUrl,
+        exposedModule: './' + exposedModule
+      } : {
+        type: 'script',
+        remoteName: r.remoteName ?? '',
+        remoteEntry: r.remoteEntryUrl,
+        exposedModule: './' + exposedModule
+      }});
     if (r.technology === Technologies.Angular || r.technology === Technologies.WebComponentModule) {
       return {
         type: 'module',
@@ -195,6 +214,7 @@ export class RoutesService {
   }
 
   private async toRouteUrl(url: string | undefined) {
+    const temp = url;
     if (!url) {
       return url
     }
@@ -212,6 +232,7 @@ export class RoutesService {
     if (url.endsWith('/')) {
       url = url.substring(0, url.length - 1)
     }
+    this.logger("🛣️", 'toRouteUrl(url: string | undefined)', { temp }, { url });
     return url
   }
 
@@ -228,6 +249,7 @@ export class RoutesService {
       pathMatch: PathMatch.full
     }
 
+    this.logger("🛣️", 'createFallbackRoute()', { currentWorkspace }, { route , returnValue_negate: currentWorkspace.homePage});
     if (!currentWorkspace.homePage) {
       return {
         ...route,
@@ -241,6 +263,73 @@ export class RoutesService {
   }
 
   private createHomePageUrl(baseUrl: string, homePage: string) {
+    this.logger("🛣️" , "createHomePageUrl(baseUrl, homePage)", { baseUrl, homePage }, { redirectUrl: Location.joinWithSlash(baseUrl, homePage) });
     return this.toRouteUrl(Location.joinWithSlash(baseUrl, homePage))
   }
+
+
+
+
+
+
+  // **************************************************************************************************************************************************************
+  // **************************************************************************************************************************************************************
+  // **************************************************************************************************************************************************************
+
+
+  private logger(emoji: string, method: string, params: Record<string, unknown>, data: Record<string, unknown>): void {
+    logOnce({
+      emoji,
+      file: 'router.service.ts',
+      method,
+      params,
+      data,
+      tag: 'routes',
+      level: 'info',
+    });
+
+  }
+
+  // private printRoutes(routes: any[], parent: string = ''): Record<string, unknown> {
+  //   for (const route of routes) {
+  //     const fullPath = parent + (route.path ? '/' + route.path : '');
+  //     console.log(fullPath || '/')
+  //     if (route.children) {
+  //       this.printRoutes(route.children, fullPath);
+  //     }
+  //     if ((route as any)._loadedRoutes) {
+  //       this.printRoutes((route as any)._loadedRoutes, fullPath);
+  //     }
+  //   }
+  // }
+
+
+  private printRoutes(
+    routes: any[],
+    parent = ''
+  ): Record<string, string> {
+    let result: Record<string, string> = {};
+    for (const route of routes) {
+      const pathPart = route.path ? `/${route.path}` : '';
+      const fullPath = (parent + pathPart) || '/';
+      // Build key: "<routePath>" => "<fullPath>"
+      const key = route.path || '(root)';
+      result[key] = fullPath;
+      // Recurse into children
+      if (route.children) {
+        const childResult = this.printRoutes(route.children, fullPath);
+        result = { ...result, ...childResult };
+      }
+      // Recurse into lazy-loaded routes
+      if ((route as any)._loadedRoutes) {
+        const lazyResult = this.printRoutes(
+          (route as any)._loadedRoutes,
+          fullPath
+        );
+        result = { ...result, ...lazyResult };
+      }
+    }
+    return result;
+  }
+
 }
