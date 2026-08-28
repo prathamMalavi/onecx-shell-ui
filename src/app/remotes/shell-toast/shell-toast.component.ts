@@ -38,11 +38,22 @@ export class OneCXShellToastComponent implements ocxRemoteComponent, ocxRemoteWe
   }
 
   constructor() {
-    this.solutionDefault()
-    // this.solutionOne()
-    // this.solutionTwo()
-    // this.solutionThree()
-    // this.solutionFour()
+    const solution = Number(localStorage.getItem('solution') ?? '0')
+    if (solution === 0) {
+      this.solutionDefault()
+    } else if (solution === 1) {
+      this.solutionOne()
+    } else if (solution === 2) {
+      this.solutionTwo()
+    } else if (solution === 3) {
+      this.solutionThree()
+    } else if (solution === 4) {
+      this.solutionFour()
+    } else {
+      localStorage.setItem('solution', '0')
+      console.warn('Unknown solution number, defaulting to solutionDefault()')
+      this.solutionDefault()
+    }
   }
 
   solutionDefault() {
